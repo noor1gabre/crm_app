@@ -46,6 +46,18 @@ const NAV_ITEMS = [
           </svg>
         ),
       },
+      {
+        href: "/explorer",
+        label: "Explorer",
+        icon: (
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <circle cx="5" cy="12" r="2" strokeLinecap="round"/>
+            <circle cx="19" cy="6" r="2" strokeLinecap="round"/>
+            <circle cx="19" cy="18" r="2" strokeLinecap="round"/>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7 12h5m2-4.5l-4 4m4 4.5l-4-4"/>
+          </svg>
+        ),
+      },
     ],
   },
 ];
