@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import "./explorer.css";
+import "../explorer.css";
 import { updateDealStage } from "@/lib/actions";
 
 /* ── Types ──────────────────────────────────────────────── */
