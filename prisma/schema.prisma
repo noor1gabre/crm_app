@@ -1,0 +1,70 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Company {
+  companyId Int       @id @default(autoincrement()) @map("company_id")
+  name      String
+  industry  String?
+  website   String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  contacts  Contact[]
+  deals     Deal[]
+
+  @@map("companies")
+}
+
+model Contact {
+  contactId  Int        @id @default(autoincrement()) @map("contact_id")
+  companyId  Int?       @map("company_id")
+  firstName  String     @map("first_name")
+  lastName   String     @map("last_name")
+  email      String?    @unique
+  phone      String?
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @default(now()) @updatedAt @map("updated_at")
+  company    Company?   @relation(fields: [companyId], references: [companyId])
+  deals      Deal[]
+  activities Activity[]
+
+  @@map("contacts")
+}
+
+model Deal {
+  dealId     Int        @id @default(autoincrement()) @map("deal_id")
+  companyId  Int?       @map("company_id")
+  contactId  Int?       @map("contact_id")
+  title      String
+  stage      String     @default("prospecting")
+  amount     Decimal?   @db.Decimal(12, 2)
+  closeDate  DateTime?  @map("close_date") @db.Date
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @default(now()) @updatedAt @map("updated_at")
+  company    Company?   @relation(fields: [companyId], references: [companyId])
+  contact    Contact?   @relation(fields: [contactId], references: [contactId])
+  activities Activity[]
+
+  @@map("deals")
+}
+
+model Activity {
+  activityId   Int      @id @default(autoincrement()) @map("activity_id")
+  dealId       Int?     @map("deal_id")
+  contactId    Int?     @map("contact_id")
+  type         String
+  notes        String?
+  activityDate DateTime @default(now()) @map("activity_date")
+  createdAt    DateTime @default(now()) @map("created_at")
+  deal         Deal?    @relation(fields: [dealId], references: [dealId])
+  contact      Contact? @relation(fields: [contactId], references: [contactId])
+
+  @@map("activities")
+}
