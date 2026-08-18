@@ -1,123 +1,240 @@
-import { prisma } from "@/lib/prisma";
+"use client";
+
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { createContact } from "@/lib/actions";
-export const dynamic = "force-dynamic";
-export default async function ContactsPage() {
-  const [contacts, companies] = await Promise.all([
-    prisma.contact.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { company: true },
-    }),
-    prisma.company.findMany({ orderBy: { name: "asc" } }),
-  ]);
+
+interface Contact {
+  contactId: number;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  createdAt: string;
+  company: { name: string } | null;
+}
+
+interface PageData { rows: Contact[]; total: number; page: number; limit: number; }
+
+const PAGE_SIZE = 15;
+
+function TableSkeleton() {
+  return (
+    <>
+      {[0,1,2,3,4,5].map((i) => (
+        <tr key={i}>
+          {[60, 140, 180, 110, 130, 90].map((w, j) => (
+            <td key={j} style={{ padding: "14px 16px" }}>
+              <div className="skeleton" style={{ width: w, height: 13, borderRadius: 3 }} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function Initials({ first, last }: { first: string; last: string }) {
+  const colors = ["var(--blue)", "var(--purple)", "var(--green)", "var(--amber)"];
+  const c = colors[(first.charCodeAt(0) + last.charCodeAt(0)) % colors.length];
+  return (
+    <div style={{
+      width: 28, height: 28, borderRadius: "50%", background: c,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      color: "#fff", fontSize: 11, fontWeight: 600, flexShrink: 0
+    }}>
+      {first[0]}{last[0]}
+    </div>
+  );
+}
+
+export default function ContactsPage() {
+  const [data, setData]       = useState<PageData | null>(null);
+  const [companies, setCompanies] = useState<{ companyId: number; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery]     = useState("");
+  const [page, setPage]       = useState(1);
+  const [showModal, setShowModal] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const load = useCallback((q: string, p: number) => {
+    setLoading(true);
+    const params = new URLSearchParams({ q, page: String(p), limit: String(PAGE_SIZE) });
+    fetch(`/api/contacts?${params}`)
+      .then((r) => r.json())
+      .then((d) => { setData(d); setLoading(false); });
+  }, []);
+
+  useEffect(() => {
+    load(query, page);
+    fetch("/api/companies?limit=200")
+      .then((r) => r.json())
+      .then((d) => setCompanies(d.rows));
+  }, [page, load]); // eslint-disable-line
+
+  const onSearch = (v: string) => {
+    setQuery(v);
+    setPage(1);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => load(v, 1), 300);
+  };
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+
+  const handleCreate = (formData: FormData) => {
+    startTransition(async () => {
+      await createContact(formData);
+      setShowModal(false);
+      formRef.current?.reset();
+      load(query, page);
+    });
+  };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-baseline justify-between">
+    <div>
+      <div className="page-header">
         <div>
-          <p className="text-xs font-mono-data text-[var(--slate)] uppercase tracking-wide mb-1">
-            contacts table
+          <h1 className="page-header-title">Contacts</h1>
+          <p className="page-header-sub">
+            {data ? `${data.total.toLocaleString()} total records` : "Loading…"}
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight">People</h1>
         </div>
-        <span className="text-sm text-[var(--slate)] font-mono-data">
-          {contacts.length} rows
-        </span>
-      </div>
-
-      <form
-        action={createContact}
-        className="p-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] grid grid-cols-1 sm:grid-cols-5 gap-3 items-end"
-      >
-        <div>
-          <label className="text-xs text-[var(--slate)] block mb-1">First name</label>
-          <input
-            name="firstName"
-            required
-            placeholder="Jane"
-            className="w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-[var(--slate)] block mb-1">Last name</label>
-          <input
-            name="lastName"
-            required
-            placeholder="Doe"
-            className="w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-[var(--slate)] block mb-1">Email</label>
-          <input
-            name="email"
-            type="email"
-            placeholder="jane@acme.com"
-            className="w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-[var(--slate)] block mb-1">Phone</label>
-          <input
-            name="phone"
-            placeholder="555-0100"
-            className="w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-[var(--slate)] block mb-1">Company</label>
-          <select
-            name="companyId"
-            className="w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] bg-white"
-          >
-            <option value="">—</option>
-            {companies.map((c) => (
-              <option key={c.companyId} value={c.companyId}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          type="submit"
-          className="sm:col-span-5 justify-self-start px-4 py-2 rounded-md bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
-        >
-          Add contact
+        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+          New Contact
         </button>
-      </form>
-
-      <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--line)] text-left text-xs text-[var(--slate)] font-mono-data">
-              <th className="px-4 py-3 font-medium">id</th>
-              <th className="px-4 py-3 font-medium">name</th>
-              <th className="px-4 py-3 font-medium">email</th>
-              <th className="px-4 py-3 font-medium">phone</th>
-              <th className="px-4 py-3 font-medium">company</th>
-            </tr>
-          </thead>
-          <tbody>
-            {contacts.map((c) => (
-              <tr key={c.contactId} className="border-b border-[var(--line)] last:border-0">
-                <td className="px-4 py-3 font-mono-data text-[var(--slate)]">{c.contactId}</td>
-                <td className="px-4 py-3 font-medium">
-                  {c.firstName} {c.lastName}
-                </td>
-                <td className="px-4 py-3 text-[var(--slate)]">{c.email ?? "—"}</td>
-                <td className="px-4 py-3 text-[var(--slate)]">{c.phone ?? "—"}</td>
-                <td className="px-4 py-3 text-[var(--slate)]">{c.company?.name ?? "—"}</td>
-              </tr>
-            ))}
-            {contacts.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-[var(--slate)]">
-                  No contacts yet. Add one above.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
       </div>
+
+      <div className="card">
+        <div className="table-search">
+          <div className="table-search-wrap">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by name or email…"
+              value={query}
+              onChange={(e) => onSearch(e.target.value)}
+            />
+          </div>
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ink-secondary)" }}>
+            {loading ? "Loading…" : `${data?.total ?? 0} results`}
+          </span>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Account</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <TableSkeleton />
+              ) : data?.rows.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>
+                    <div className="empty-state">
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
+                      <p>No contacts found.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                data?.rows.map((c) => (
+                  <tr key={c.contactId}>
+                    <td><span className="text-mono" style={{ color: "var(--ink-secondary)" }}>#{c.contactId}</span></td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Initials first={c.firstName} last={c.lastName} />
+                        <span style={{ fontWeight: 500 }}>{c.firstName} {c.lastName}</span>
+                      </div>
+                    </td>
+                    <td style={{ color: "var(--blue)", fontSize: 12 }}>{c.email ?? <span style={{ color: "var(--ink-muted)" }}>—</span>}</td>
+                    <td style={{ fontSize: 12, color: "var(--ink-secondary)" }}>{c.phone ?? <span style={{ color: "var(--ink-muted)" }}>—</span>}</td>
+                    <td>
+                      {c.company
+                        ? <span className="badge badge-neutral">{c.company.name}</span>
+                        : <span style={{ color: "var(--ink-muted)" }}>—</span>}
+                    </td>
+                    <td style={{ color: "var(--ink-secondary)", fontSize: 12 }}>
+                      {new Date(c.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="pagination">
+          <span className="pagination-info">Page {page} of {totalPages} · {data?.total ?? 0} total</span>
+          <button className="page-btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>←</button>
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+            const num = start + i;
+            return <button key={num} className={`page-btn${num === page ? " active" : ""}`} onClick={() => setPage(num)} disabled={loading}>{num}</button>;
+          })}
+          <button className="page-btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>→</button>
+        </div>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
+          <div className="modal">
+            <div className="modal-header">
+              <h2 className="modal-title">New Contact</h2>
+              <button className="icon-btn" onClick={() => setShowModal(false)}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <form ref={formRef} action={handleCreate}>
+              <div className="modal-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div>
+                  <label className="form-label">First Name *</label>
+                  <input name="firstName" required placeholder="Jane" className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Last Name *</label>
+                  <input name="lastName" required placeholder="Doe" className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Email</label>
+                  <input name="email" type="email" placeholder="jane@acme.com" className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Phone</label>
+                  <input name="phone" placeholder="555-0100" className="form-input" />
+                </div>
+                <div style={{ gridColumn: "span 2" }}>
+                  <label className="form-label">Account</label>
+                  <select name="companyId" className="form-select">
+                    <option value="">— None —</option>
+                    {companies.map((c) => (
+                      <option key={c.companyId} value={c.companyId}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isPending}>
+                  {isPending ? "Saving…" : "Create Contact"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

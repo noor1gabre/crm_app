@@ -1,32 +1,27 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import { Nav } from "@/components/Nav";
+import { Sidebar } from "@/components/Sidebar";
+import { TopBar } from "@/components/TopBar";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Coil CRM — Learning Project",
-  description: "Simulated CRM OLTP source for the CDC/streaming pipeline",
+  title: "Coil CRM — Sales Intelligence Platform",
+  description: "Professional CRM with real-time pipeline management, built on RDS PostgreSQL",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        <Nav />
-        <main className="mx-auto max-w-6xl px-6 py-10 w-full">{children}</main>
+    <html lang="en" className={inter.variable}>
+      <body>
+        <div className="app-shell">
+          <Sidebar />
+          <div className="page-content">
+            <TopBar />
+            <main className="page-body">{children}</main>
+          </div>
+        </div>
       </body>
     </html>
   );
