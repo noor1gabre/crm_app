@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { createDeal, createActivity, updateDealStage, deleteDeal } from "@/lib/actions";
+import { createDeal, createActivity, updateDealStage, deleteDeal, updateDeal, deleteActivity, updateActivity } from "@/lib/actions";
 
 interface Activity { activityId: number; type: string; notes: string | null; activityDate: string; }
 interface Deal {
   dealId: number;
   contactId: number | null;
+  companyId: number | null;
   title: string;
   stage: string;
   amount: string | null;
@@ -94,15 +95,54 @@ function DeleteBtn({ dealId, onDeleted }: { dealId: number; onDeleted: () => voi
   );
 }
 
-function ActivityRow({ a }: { a: Activity }) {
+function ActivityRow({ a, onDeleted, onUpdated }: { a: Activity, onDeleted: () => void, onUpdated: () => void }) {
   const COLOR: Record<string, string> = { call: "var(--blue)", email: "var(--purple)", meeting: "var(--green)", note: "var(--amber)" };
+  const [isEditing, setIsEditing] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  const handleUpdate = (formData: FormData) => {
+    startTransition(async () => {
+      await updateActivity(a.activityId, formData);
+      setIsEditing(false);
+      onUpdated();
+    });
+  };
+
+  const handleDelete = () => {
+    if (!confirm("Delete this activity?")) return;
+    startTransition(async () => {
+      await deleteActivity(a.activityId);
+      onDeleted();
+    });
+  };
+
+  if (isEditing) {
+    return (
+      <form action={handleUpdate} style={{ display: "flex", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border-subtle)", fontSize: 12 }}>
+        <select name="type" className="form-select" style={{ fontSize: 12, padding: "2px 6px" }} defaultValue={a.type}>
+          <option value="call">📞</option>
+          <option value="email">✉️</option>
+          <option value="meeting">🤝</option>
+          <option value="note">📝</option>
+        </select>
+        <input name="notes" defaultValue={a.notes || ""} className="form-input" style={{ fontSize: 12, flex: 1, padding: "2px 6px" }} />
+        <button type="submit" className="btn btn-primary" style={{ padding: "2px 8px" }} disabled={isPending}>Save</button>
+        <button type="button" className="btn btn-secondary" style={{ padding: "2px 8px" }} onClick={() => setIsEditing(false)}>Cancel</button>
+      </form>
+    );
+  }
+
   return (
-    <div style={{ display: "flex", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border-subtle)", fontSize: 12 }}>
+    <div style={{ display: "flex", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border-subtle)", fontSize: 12, position: "relative" }} className="group">
       <div style={{ width: 6, height: 6, borderRadius: "50%", background: COLOR[a.type] ?? "var(--ink-muted)", marginTop: 5, flexShrink: 0 }} />
-      <div>
+      <div style={{ flex: 1 }}>
         <span style={{ fontWeight: 500, textTransform: "capitalize", color: COLOR[a.type] }}>{a.type}</span>
         {a.notes && <span style={{ color: "var(--ink-secondary)" }}> — {a.notes}</span>}
         <div style={{ color: "var(--ink-muted)", fontSize: 10 }}>{new Date(a.activityDate).toLocaleDateString()}</div>
+      </div>
+      <div style={{ display: "flex", gap: 4, opacity: 0 }} className="group-hover:opacity-100 transition-opacity">
+        <button type="button" onClick={() => setIsEditing(true)} className="icon-btn" style={{ padding: 2 }}><svg width="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
+        <button type="button" onClick={handleDelete} className="icon-btn" style={{ padding: 2, color: "var(--red)" }} disabled={isPending}><svg width="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
       </div>
     </div>
   );
@@ -111,12 +151,14 @@ function ActivityRow({ a }: { a: Activity }) {
 export default function DealsPage() {
   const [data, setData]         = useState<PageData | null>(null);
   const [companies, setCompanies] = useState<{ companyId: number; name: string }[]>([]);
-  const [contacts, setContacts]   = useState<{ contactId: number; firstName: string; lastName: string }[]>([]);
+  const [contacts, setContacts]   = useState<{ contactId: number; firstName: string; lastName: string; companyId: number | null }[]>([]);
   const [loading, setLoading]     = useState(true);
   const [query, setQuery]         = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [page, setPage]           = useState(1);
   const [showModal, setShowModal] = useState(false);
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [expandedDeal, setExpandedDeal] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,10 +197,30 @@ export default function DealsPage() {
   const handleCreate = (formData: FormData) => {
     startTransition(async () => {
       await createDeal(formData);
-      setShowModal(false);
-      formRef.current?.reset();
+      closeModal();
       refresh();
     });
+  };
+
+  const handleUpdate = (formData: FormData) => {
+    if (!editingDeal) return;
+    startTransition(async () => {
+      await updateDeal(editingDeal.dealId, formData);
+      closeModal();
+      refresh();
+    });
+  };
+
+  const openEdit = (d: Deal) => {
+    setEditingDeal(d);
+    setSelectedCompanyId(d.companyId?.toString() ?? "");
+    setShowModal(true);
+  };
+  const closeModal = () => {
+    setEditingDeal(null);
+    setShowModal(false);
+    setSelectedCompanyId("");
+    formRef.current?.reset();
   };
 
   const handleLogActivity = (formData: FormData) => {
@@ -178,7 +240,7 @@ export default function DealsPage() {
             {stageFilter && ` · filtered by ${STAGE_LABEL[stageFilter]}`}
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn btn-primary" onClick={() => { setEditingDeal(null); setShowModal(true); setSelectedCompanyId(""); }}>
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
           New Deal
         </button>
@@ -268,7 +330,12 @@ export default function DealsPage() {
                       </td>
                       <td style={{ fontSize: 12, color: "var(--ink-secondary)" }}>{new Date(d.updatedAt).toLocaleDateString()}</td>
                       <td onClick={(e) => e.stopPropagation()}>
-                        <DeleteBtn dealId={d.dealId} onDeleted={refresh} />
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button className="icon-btn" onClick={() => openEdit(d)} data-tooltip="Edit deal">
+                            <svg width="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
+                          </button>
+                          <DeleteBtn dealId={d.dealId} onDeleted={refresh} />
+                        </div>
                       </td>
                     </tr>
                     {/* Expanded activity row */}
@@ -283,7 +350,7 @@ export default function DealsPage() {
                               </div>
                               {d.activities.length === 0
                                 ? <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>No activities yet.</div>
-                                : d.activities.map((a) => <ActivityRow key={a.activityId} a={a} />)
+                                : d.activities.map((a) => <ActivityRow key={a.activityId} a={a} onDeleted={refresh} onUpdated={refresh} />)
                               }
                             </div>
                             {/* Log activity form */}
@@ -328,43 +395,51 @@ export default function DealsPage() {
       </div>
 
       {/* New Deal Modal */}
+      {/* Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && closeModal()}>
           <div className="modal">
             <div className="modal-header">
-              <h2 className="modal-title">New Deal</h2>
-              <button className="icon-btn" onClick={() => setShowModal(false)}>
+              <h2 className="modal-title">{editingDeal ? "Edit Deal" : "New Deal"}</h2>
+              <button className="icon-btn" onClick={closeModal}>
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <form ref={formRef} action={handleCreate}>
+            <form ref={formRef} action={editingDeal ? handleUpdate : handleCreate}>
               <div className="modal-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div style={{ gridColumn: "span 2" }}>
                   <label className="form-label">Deal Title *</label>
-                  <input name="title" required placeholder="Acme — Annual contract" className="form-input" />
+                  <input name="title" required defaultValue={editingDeal?.title ?? ""} placeholder="Acme — Annual contract" className="form-input" />
                 </div>
                 <div>
                   <label className="form-label">Amount ($)</label>
-                  <input name="amount" type="number" step="0.01" placeholder="12000" className="form-input" />
+                  <input name="amount" type="number" step="0.01" defaultValue={editingDeal?.amount ?? ""} placeholder="12000" className="form-input" />
                 </div>
                 <div>
                   <label className="form-label">Account</label>
-                  <select name="companyId" className="form-select">
+                  <select 
+                    name="companyId" 
+                    className="form-select"
+                    value={selectedCompanyId}
+                    onChange={(e) => setSelectedCompanyId(e.target.value)}
+                  >
                     <option value="">— None —</option>
                     {companies.map((c) => <option key={c.companyId} value={c.companyId}>{c.name}</option>)}
                   </select>
                 </div>
                 <div style={{ gridColumn: "span 2" }}>
                   <label className="form-label">Contact</label>
-                  <select name="contactId" className="form-select">
+                  <select name="contactId" className="form-select" defaultValue={editingDeal?.contactId?.toString() ?? ""}>
                     <option value="">— None —</option>
-                    {contacts.map((c) => <option key={c.contactId} value={c.contactId}>{c.firstName} {c.lastName}</option>)}
+                    {contacts
+                      .filter(c => !selectedCompanyId || c.companyId === Number(selectedCompanyId))
+                      .map((c) => <option key={c.contactId} value={c.contactId}>{c.firstName} {c.lastName}</option>)}
                   </select>
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={isPending}>{isPending ? "Saving…" : "Create Deal"}</button>
+                <button type="button" className="btn btn-secondary" onClick={closeModal}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isPending}>{isPending ? "Saving…" : editingDeal ? "Save Changes" : "Create Deal"}</button>
               </div>
             </form>
           </div>

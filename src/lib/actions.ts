@@ -39,6 +39,28 @@ export async function createContact(formData: FormData) {
   revalidatePath("/contacts");
 }
 
+export async function updateContact(contactId: number, formData: FormData) {
+  const firstName = formData.get("firstName") as string;
+  const lastName = formData.get("lastName") as string;
+  const email = formData.get("email") as string;
+  const phone = formData.get("phone") as string;
+  const companyId = formData.get("companyId") as string;
+
+  await prisma.contact.update({
+    where: { contactId },
+    data: {
+      firstName,
+      lastName,
+      email: email || null,
+      phone: phone || null,
+      companyId: companyId ? parseInt(companyId) : null,
+    },
+  });
+
+  revalidatePath("/contacts");
+  revalidatePath("/explorer");
+}
+
 // ---------- DEALS ----------
 
 export async function createDeal(formData: FormData) {
@@ -58,6 +80,26 @@ export async function createDeal(formData: FormData) {
   });
 
   revalidatePath("/deals");
+}
+
+export async function updateDeal(dealId: number, formData: FormData) {
+  const title = formData.get("title") as string;
+  const amount = formData.get("amount") as string;
+  const companyId = formData.get("companyId") as string;
+  const contactId = formData.get("contactId") as string;
+
+  await prisma.deal.update({
+    where: { dealId },
+    data: {
+      title,
+      amount: amount ? parseFloat(amount) : null,
+      companyId: companyId ? parseInt(companyId) : null,
+      contactId: contactId ? parseInt(contactId) : null,
+    },
+  });
+
+  revalidatePath("/deals");
+  revalidatePath("/explorer");
 }
 
 // This is the key "update" action - moving a deal through pipeline stages.
@@ -98,4 +140,26 @@ export async function createActivity(formData: FormData) {
   });
 
   revalidatePath("/deals");
+}
+
+export async function deleteActivity(activityId: number) {
+  await prisma.activity.delete({ where: { activityId } });
+  revalidatePath("/deals");
+  revalidatePath("/explorer");
+}
+
+export async function updateActivity(activityId: number, formData: FormData) {
+  const type = formData.get("type") as string;
+  const notes = formData.get("notes") as string;
+
+  await prisma.activity.update({
+    where: { activityId },
+    data: {
+      type,
+      notes: notes || null,
+    },
+  });
+
+  revalidatePath("/deals");
+  revalidatePath("/explorer");
 }

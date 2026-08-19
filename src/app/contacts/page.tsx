@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { createContact } from "@/lib/actions";
+import { createContact, updateContact } from "@/lib/actions";
 
 interface Contact {
   contactId: number;
@@ -11,6 +11,7 @@ interface Contact {
   phone: string | null;
   createdAt: string;
   company: { name: string } | null;
+  companyId: number | null;
 }
 
 interface PageData { rows: Contact[]; total: number; page: number; limit: number; }
@@ -54,6 +55,7 @@ export default function ContactsPage() {
   const [query, setQuery]     = useState("");
   const [page, setPage]       = useState(1);
   const [showModal, setShowModal] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [isPending, startTransition] = useTransition();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -85,10 +87,28 @@ export default function ContactsPage() {
   const handleCreate = (formData: FormData) => {
     startTransition(async () => {
       await createContact(formData);
-      setShowModal(false);
-      formRef.current?.reset();
+      closeModal();
       load(query, page);
     });
+  };
+
+  const handleUpdate = (formData: FormData) => {
+    if (!editingContact) return;
+    startTransition(async () => {
+      await updateContact(editingContact.contactId, formData);
+      closeModal();
+      load(query, page);
+    });
+  };
+
+  const openEdit = (c: Contact) => {
+    setEditingContact(c);
+    setShowModal(true);
+  };
+  const closeModal = () => {
+    setEditingContact(null);
+    setShowModal(false);
+    formRef.current?.reset();
   };
 
   return (
@@ -100,7 +120,7 @@ export default function ContactsPage() {
             {data ? `${data.total.toLocaleString()} total records` : "Loading…"}
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn btn-primary" onClick={() => { setEditingContact(null); setShowModal(true); }}>
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
           New Contact
         </button>
@@ -134,6 +154,7 @@ export default function ContactsPage() {
                 <th>Phone</th>
                 <th>Account</th>
                 <th>Created</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -141,7 +162,7 @@ export default function ContactsPage() {
                 <TableSkeleton />
               ) : data?.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <div className="empty-state">
                       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
                       <p>No contacts found.</p>
@@ -168,6 +189,11 @@ export default function ContactsPage() {
                     <td style={{ color: "var(--ink-secondary)", fontSize: 12 }}>
                       {new Date(c.createdAt).toLocaleDateString()}
                     </td>
+                    <td>
+                      <button className="icon-btn" onClick={() => openEdit(c)} data-tooltip="Edit contact">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -189,35 +215,35 @@ export default function ContactsPage() {
 
       {/* Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && closeModal()}>
           <div className="modal">
             <div className="modal-header">
-              <h2 className="modal-title">New Contact</h2>
-              <button className="icon-btn" onClick={() => setShowModal(false)}>
+              <h2 className="modal-title">{editingContact ? "Edit Contact" : "New Contact"}</h2>
+              <button className="icon-btn" onClick={closeModal}>
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <form ref={formRef} action={handleCreate}>
+            <form ref={formRef} action={editingContact ? handleUpdate : handleCreate}>
               <div className="modal-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div>
                   <label className="form-label">First Name *</label>
-                  <input name="firstName" required placeholder="Jane" className="form-input" />
+                  <input name="firstName" required defaultValue={editingContact?.firstName ?? ""} placeholder="Jane" className="form-input" />
                 </div>
                 <div>
                   <label className="form-label">Last Name *</label>
-                  <input name="lastName" required placeholder="Doe" className="form-input" />
+                  <input name="lastName" required defaultValue={editingContact?.lastName ?? ""} placeholder="Doe" className="form-input" />
                 </div>
                 <div>
                   <label className="form-label">Email</label>
-                  <input name="email" type="email" placeholder="jane@acme.com" className="form-input" />
+                  <input name="email" type="email" defaultValue={editingContact?.email ?? ""} placeholder="jane@acme.com" className="form-input" />
                 </div>
                 <div>
                   <label className="form-label">Phone</label>
-                  <input name="phone" placeholder="555-0100" className="form-input" />
+                  <input name="phone" defaultValue={editingContact?.phone ?? ""} placeholder="555-0100" className="form-input" />
                 </div>
                 <div style={{ gridColumn: "span 2" }}>
                   <label className="form-label">Account</label>
-                  <select name="companyId" className="form-select">
+                  <select name="companyId" className="form-select" defaultValue={editingContact?.companyId?.toString() ?? ""}>
                     <option value="">— None —</option>
                     {companies.map((c) => (
                       <option key={c.companyId} value={c.companyId}>{c.name}</option>
@@ -226,9 +252,9 @@ export default function ContactsPage() {
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="button" className="btn btn-secondary" onClick={closeModal}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={isPending}>
-                  {isPending ? "Saving…" : "Create Contact"}
+                  {isPending ? "Saving…" : editingContact ? "Save Changes" : "Create Contact"}
                 </button>
               </div>
             </form>
