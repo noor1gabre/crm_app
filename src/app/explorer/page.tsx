@@ -36,6 +36,7 @@ interface Company {
   website: string | null;
   contacts: Contact[];
   deals: Deal[];
+  _count?: { contacts: number; deals: number };
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -206,14 +207,36 @@ function ContactPanel({ contact, onClose }: { contact: Contact; onClose: () => v
 
 /* ── CompanyNode ────────────────────────────────────────── */
 function CompanyNode({ company, onRefresh }: { company: Company; onRefresh: () => void }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [selectedContact, setSelectedContact] = useState<number | null>(null);
-  const selContact = company.contacts.find((c) => c.contactId === selectedContact) ?? null;
+  const [details, setDetails] = useState<Company | null>(null);
+  const [loading, setLoading] = useState(false);
+  
+  const selContact = details?.contacts.find((c) => c.contactId === selectedContact) ?? null;
+
+  const toggleCollapse = async () => {
+    if (collapsed) {
+      setCollapsed(false);
+      if (!details) {
+        setLoading(true);
+        const res = await fetch(`/api/explorer/${company.companyId}`);
+        const data = await res.json();
+        setDetails(data);
+        setLoading(false);
+      }
+    } else {
+      setCollapsed(true);
+    }
+  };
+
+  const contactCount = details ? details.contacts.length : company._count?.contacts ?? 0;
+  const dealCount = details ? details.deals.length : company._count?.deals ?? 0;
+  const activityCount = details ? details.deals.reduce((s, d) => s + d.activities.length, 0) : "—";
 
   return (
     <div className="company-node fade-up">
       {/* Header */}
-      <div className="company-node-header" onClick={() => setCollapsed((c) => !c)}>
+      <div className="company-node-header" onClick={toggleCollapse}>
         <div className="company-icon">{company.name[0].toUpperCase()}</div>
         <div style={{ flex:1 }}>
           <div className="company-name">{company.name}</div>
@@ -224,17 +247,15 @@ function CompanyNode({ company, onRefresh }: { company: Company; onRefresh: () =
         </div>
         <div className="company-stats">
           <div className="company-stat">
-            <div className="company-stat-value">{company.contacts.length}</div>
+            <div className="company-stat-value">{contactCount}</div>
             <div className="company-stat-label">Contacts</div>
           </div>
           <div className="company-stat">
-            <div className="company-stat-value">{company.deals.length}</div>
+            <div className="company-stat-value">{dealCount}</div>
             <div className="company-stat-label">Deals</div>
           </div>
           <div className="company-stat">
-            <div className="company-stat-value">
-              {company.deals.reduce((s, d) => s + d.activities.length, 0)}
-            </div>
+            <div className="company-stat-value">{activityCount}</div>
             <div className="company-stat-label">Activities</div>
           </div>
         </div>
@@ -247,23 +268,33 @@ function CompanyNode({ company, onRefresh }: { company: Company; onRefresh: () =
       {/* Body */}
       {!collapsed && (
         <div className="company-node-body">
-          {/* Contacts section */}
-          {company.contacts.length > 0 && (
+          {loading ? (
+            <div style={{ padding: 20, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>
+              Loading details…
+            </div>
+          ) : !details ? (
+            <div style={{ padding: 20, textAlign: "center", color: "var(--red)", fontSize: 12 }}>
+              Failed to load details.
+            </div>
+          ) : (
             <>
-              <div className="section-label">
-                <span style={{ color:"var(--purple)" }}>👤</span> Contacts
-              </div>
-              <div className="contact-chips">
-                {company.contacts.map((c) => (
-                  <ContactChip
-                    key={c.contactId}
-                    contact={c}
-                    selected={selectedContact === c.contactId}
-                    onClick={() => setSelectedContact(selectedContact === c.contactId ? null : c.contactId)}
-                  />
-                ))}
-              </div>
-              {/* Selected contact panel */}
+              {/* Contacts section */}
+              {details.contacts.length > 0 && (
+                <>
+                  <div className="section-label">
+                    <span style={{ color:"var(--purple)" }}>👤</span> Contacts
+                  </div>
+                  <div className="contact-chips">
+                    {details.contacts.map((c) => (
+                      <ContactChip
+                        key={c.contactId}
+                        contact={c}
+                        selected={selectedContact === c.contactId}
+                        onClick={() => setSelectedContact(selectedContact === c.contactId ? null : c.contactId)}
+                      />
+                    ))}
+                  </div>
+                  {/* Selected contact panel */}
               {selContact && (
                 <ContactPanel
                   contact={selContact}
@@ -273,23 +304,30 @@ function CompanyNode({ company, onRefresh }: { company: Company; onRefresh: () =
             </>
           )}
 
-          {/* Deals section */}
-          <div className="section-label">
-            <span style={{ color:"var(--blue)" }}>📊</span> Deals & Activities
-          </div>
-          {company.deals.length === 0 ? (
-            <div className="node-empty">No deals yet for this account.</div>
-          ) : (
-            <div className="deal-cards">
-              {company.deals.map((d) => (
-                <DealCard
-                  key={d.dealId}
-                  deal={d}
-                  highlighted={!!selContact && d.contact?.contactId === selectedContact}
-                  onStageChange={onRefresh}
-                />
-              ))}
-            </div>
+              {/* Deals section */}
+              <div className="section-label">
+                <span style={{ color:"var(--blue)" }}>📊</span> Deals & Activities
+              </div>
+              {details.deals.length === 0 ? (
+                <div className="node-empty">No deals yet for this account.</div>
+              ) : (
+                <div className="deal-cards">
+                  {details.deals.map((d) => (
+                    <DealCard
+                      key={d.dealId}
+                      deal={d}
+                      highlighted={!!selContact && d.contact?.contactId === selectedContact}
+                      onStageChange={() => {
+                        // Optimistically re-fetch just this company
+                        fetch(`/api/explorer/${company.companyId}`)
+                          .then(r => r.json())
+                          .then(setDetails);
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -332,10 +370,10 @@ export default function ExplorerPage() {
         <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:"var(--ink-secondary)" }}>
           <span className="badge badge-blue">{companies.length} accounts</span>
           <span className="badge badge-purple">
-            {companies.reduce((s, c) => s + c.contacts.length, 0)} contacts
+            {companies.reduce((s, c) => s + (c._count?.contacts ?? 0), 0)} contacts
           </span>
           <span className="badge badge-neutral">
-            {companies.reduce((s, c) => s + c.deals.length, 0)} deals
+            {companies.reduce((s, c) => s + (c._count?.deals ?? 0), 0)} deals
           </span>
         </div>
       </div>

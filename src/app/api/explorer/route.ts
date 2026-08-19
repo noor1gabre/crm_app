@@ -12,22 +12,9 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "desc" },
     take: 20,
     include: {
-      contacts: {
-        orderBy: { createdAt: "desc" },
-        include: {
-          activities: { orderBy: { activityDate: "desc" }, take: 5 },
-          deals: {
-            select: { dealId: true, title: true, stage: true, amount: true },
-          },
-        },
-      },
-      deals: {
-        orderBy: { updatedAt: "desc" },
-        include: {
-          contact: { select: { contactId: true, firstName: true, lastName: true } },
-          activities: { orderBy: { activityDate: "desc" }, take: 5 },
-        },
-      },
+      _count: {
+        select: { contacts: true, deals: true }
+      }
     },
   });
 
