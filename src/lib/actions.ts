@@ -72,8 +72,12 @@ export async function updateDealStage(dealId: number, newStage: string) {
 }
 
 export async function deleteDeal(dealId: number) {
+  // Delete associated activities first to satisfy foreign key constraints
+  await prisma.activity.deleteMany({ where: { dealId } });
   await prisma.deal.delete({ where: { dealId } });
+  
   revalidatePath("/deals");
+  revalidatePath("/explorer");
 }
 
 // ---------- ACTIVITIES ----------
